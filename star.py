@@ -21,17 +21,38 @@ def gradR(kappa,l,m,ff,ss,p,t):
 def gradRho(p,dpdt,t,gradd,dpdrho,rho):
 	return (p-dpdt*t*gradd)/(dpdrho*rho)
 
-def gradConv(gradRr,gradAd,kappa,rho,hs,alpha,m,r,q,cp,t,convcache):
+def gradConv(gradRr,gradAd,kappa,rho,hs,alpha,m,r,q,cp,t,convcache,rot):
 	lt = hs*alpha
 	w = kappa*rho*lt
 	g0 = cp*rho*(1+(w**2)/3)/(8*sigma*t**3*w)
 	d = newtonG*m*lt**2*q/(8*hs*r**2)
 	aa = 9*w**2/(8*(3+w**2))
 	v = 1/(g0*d**0.5*(gradRr-gradAd)**0.5)
+#	print(v, aa)
 	y0 = convcache.convGrad(v,aa)
-	return gradAd+(gradRr-gradAd)*y0*(y0+v),y0/v,y0/(v*g0)
+	grad = gradAd+(gradRr-gradAd)*y0*(y0+v)
 
-def gradFull(m,r,tau,l,t,rho,opac,x,y,alpha,thermcache,convcache):
+	# Now make correction for rotation.
+	n2 = newtonG * m * (grad - gradAd) / r**2 / hs
+	vold = y0/(v*g0)
+	if n2 < rot**2:
+		alpha *= (n2 / rot**2)**0.25
+		lt = hs*alpha
+		w = kappa*rho*lt
+		g0 = cp*rho*(1+(w**2)/3)/(8*sigma*t**3*w)
+		d = newtonG*m*lt**2*q/(8*hs*r**2)
+		aa = 9*w**2/(8*(3+w**2))
+		v = 1/(g0*d**0.5*(gradRr-gradAd)**0.5)
+		y0 = convcache.convGrad(v,aa)
+		grad = gradAd+(gradRr-gradAd)*y0*(y0+v)
+		n2new = newtonG * m * (grad - gradAd) / r**2 / hs
+
+		print('alpha:::::',(rot**2/n2)**(1./3), n2new/n2)
+
+
+	return grad,y0/v,y0/(v*g0)
+
+def gradFull(m,r,tau,l,t,rho,opac,x,y,alpha,rot,thermcache,convcache):
 	ff = f(tau)
 	ss = s(t,rho,l,r,m)
 	q,cp,gradad,p,dpro,dpt,u,dut,vad,error,xh1,xhe1,xhe2 = thermcache.termo(rho,t)
@@ -42,9 +63,9 @@ def gradFull(m,r,tau,l,t,rho,opac,x,y,alpha,thermcache,convcache):
 	gradd = gradR(kappa,l,m,ff,ss,p,t)
 	if not isinstance(gradd, np.ndarray):
 		if gradRr>gradad:
-			gradd = gradConv(gradRr,gradad,kappa,rho,hs,alpha,m,r,q,cp,t,convcache)[0][0]
+			gradd = gradConv(gradRr,gradad,kappa,rho,hs,alpha,m,r,q,cp,t,convcache,rot)[0]
 	else:
-		gradd[gradRr>gradad] = gradConv(gradRr,gradad,kappa,rho,hs,alpha,m,r,q,cp,t,convcache)[0][gradRr>gradad]    	
+		gradd[gradRr>gradad] = gradConv(gradRr,gradad,kappa,rho,hs,alpha,m,r,q,cp,t,convcache,rot)[0][gradRr>gradad]    	
 		if len(np.where(np.isnan(gradd))[0])>0:
 			print 'Error: Invalid numerics detected in gradient calculation.'
 			print 'Inputs are:'
@@ -59,22 +80,22 @@ def gradFull(m,r,tau,l,t,rho,opac,x,y,alpha,thermcache,convcache):
 			exit()
 	return gradd
 
-def dgraddT(m,r,p,tau,l,t,opac,x,y,alpha,thermcache,convcache,rhocache,eps=1e-3):
+def dgraddT(m,r,p,tau,l,t,opac,x,y,alpha,rot,thermcache,convcache,rhocache,eps=1e-3):
 	rho0 = rhocache.rho(p,t*(1-eps))
 	rho1 = rhocache.rho(p,t*(1+eps))
-	g0 = gradFull(m,r,tau,l,t*(1-eps),rho0,opac,x,y,alpha,thermcache,convcache)
-	g1 = gradFull(m,r,tau,l,t*(1+eps),rho1,opac,x,y,alpha,thermcache,convcache)
+	g0 = gradFull(m,r,tau,l,t*(1-eps),rho0,opac,x,y,alpha,rot,thermcache,convcache)
+	g1 = gradFull(m,r,tau,l,t*(1+eps),rho1,opac,x,y,alpha,rot,thermcache,convcache)
 	return (g1-g0)/(2*t*eps)
 
-def dgraddL(m,r,p,tau,l,t,opac,x,y,alpha,thermcache,convcache,rhocache,l0,eps=1e-3):	
+def dgraddL(m,r,p,tau,l,t,opac,x,y,alpha,rot,thermcache,convcache,rhocache,l0,eps=1e-3):	
 	rho = rhocache.rho(p,t)
 	dlp = eps*l0
-	g0 = gradFull(m,r,tau,l-dlp,t,rho,opac,x,y,alpha,thermcache,convcache)
-	g1 = gradFull(m,r,tau,l+dlp,t,rho,opac,x,y,alpha,thermcache,convcache)
+	g0 = gradFull(m,r,tau,l-dlp,t,rho,opac,x,y,alpha,rot,thermcache,convcache)
+	g1 = gradFull(m,r,tau,l+dlp,t,rho,opac,x,y,alpha,rot,thermcache,convcache)
 	return (g1-g0)/(2*dlp)
 
 class star:
-	def __init__(self,x,y,m0,r0,l0,alpha,thermcache,rhocache,convcache,fnameOpal='../Opacity Tables/Opal/GS98.txt',fnameFerg='../Opacity Tables/Ferguson/f05.gs98/',delM=3e-3,lext=0,minRes=500,caution=500,quiet=False):
+	def __init__(self,x,y,m0,r0,l0,alpha,thermcache,rhocache,convcache,fnameOpal='../Opacity Tables/Opal/GS98.txt',fnameFerg='../Opacity Tables/Ferguson/f05.gs98/',delM=3e-3,lext=0,minRes=500,caution=500,quiet=False,rot=1e-10):
 		# Store inputs
 		self.x = x
 		self.y = y
@@ -82,6 +103,7 @@ class star:
 		self.r0 = r0
 		self.t0 = ((l0 + lext)/(8*pi*sigma*self.r0**2))**0.25 # T0 is the surface temp, not the photosphere temp: related by 2^(1/4)
 		self.l0 = l0
+		self.rot = rot
 		self.l = None
 		self.lext = lext
 		self.alpha = alpha
@@ -253,10 +275,10 @@ class star:
 			dr = 1./(4*pi*r**2*rho)
 			dtau = -kappa/(4*pi*r**2)
 			dp = p*dlnp
-			
+
 			# Compute other quantities of interest
 			hs = p*r**2/(rho*newtonG*self.m0)
-			gradC,gam,vc = gradConv(gradRr,gradad,kappa,rho,hs,self.alpha,self.m0,r,q,cp,t,self.convcache)
+			gradC,gam,vc = gradConv(gradRr,gradad,kappa,rho,hs,self.alpha,self.m0,r,q,cp,t,self.convcache,self.rot)
 			gam = gam[0]
 			vc = vc[0]
 			mu = kB*t*rho/(p-a*(t**4)/3)
@@ -269,6 +291,8 @@ class star:
 			dlnrho = gradRhoo*dlnp
 			dlnt = gradd*dlnp
 			
+#			print(dlnp, dr, dtau, dp, p, r, t, rho, gradRhoo, gradC)
+
 			# Wrap derivatives
 			derivs = np.array([dlnt,dlnrho,dr,dtau])
 			
@@ -315,11 +339,11 @@ class star:
 		g    =	newtonG*self.m0/self.r0**2
 
 		# Compute grad
-		grad =	gradFull(self.m0,self.r0,tau,l[:-1],t,rho,self.opac,self.x,self.y,self.alpha,self.thermcache,self.convcache)
+		grad =	gradFull(self.m0,self.r0,tau,l[:-1],t,rho,self.opac,self.x,self.y,self.alpha,self.rot,self.thermcache,self.convcache)
 
 		# Compute grad derivatives
-		dgdt =	dgraddT(self.m0,self.r0,p,tau,l[:-1],t,self.opac,self.x,self.y,self.alpha,self.thermcache,self.convcache,self.rhocache)
-		dgdl =	dgraddL(self.m0,self.r0,p,tau,l[:-1],t,self.opac,self.x,self.y,self.alpha,self.thermcache,self.convcache,self.rhocache,self.l0)
+		dgdt =	dgraddT(self.m0,self.r0,p,tau,l[:-1],t,self.opac,self.x,self.y,self.alpha,self.rot,self.thermcache,self.convcache,self.rhocache)
+		dgdl =	dgraddL(self.m0,self.r0,p,tau,l[:-1],t,self.opac,self.x,self.y,self.alpha,self.rot,self.thermcache,self.convcache,self.rhocache,self.l0)
 
 		# Prepare sparse matrix
 		# L occupies 0 through N, T occupies N+1 through 2N, tau goes 2N+1 to 3N
@@ -367,7 +391,7 @@ class star:
 		t1 = self.state[:,0] + vec[n+1:2*n+1]
 		l1 = self.l + vec[:n+1]*self.l0
 		rho1 = self.rhocache.rho(p,t1)
-		grad1 =	gradFull(self.m0,self.r0,tau,l1[:-1],t1,rho1,self.opac,self.x,self.y,self.alpha,self.thermcache,self.convcache)
+		grad1 =	gradFull(self.m0,self.r0,tau,l1[:-1],t1,rho1,self.opac,self.x,self.y,self.alpha,self.rot,self.thermcache,self.convcache)
 		k = self.opac.opacity(t1,rho1)
 		# Evaluate derivative conditions
 		ders = self.diffMat*np.concatenate((l1,t1))
@@ -448,7 +472,7 @@ class star:
 		self.state[:,10] = dut
 		self.state[:,11] = vad
 		self.state[:,12] = gradFull(self.m0,self.r0,self.state[:,3],self.l[:-1],self.state[:,0],self.state[:,1]\
-							,self.opac,self.x,self.y,self.alpha,self.thermcache,self.convcache)
+							,self.opac,self.x,self.y,self.alpha,self.rot,self.thermcache,self.convcache)
 		self.state[:,13] = gradRho(self.state[:,4],self.state[:,8],self.state[:,0],self.state[:,12],\
 							self.state[:,7],self.state[:,1])
 		self.state[:,14] = gradR(kappa,self.l[:-1],self.m0,ff,ss,self.state[:,4],self.state[:,0])

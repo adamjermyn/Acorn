@@ -7,7 +7,7 @@ from scipy.optimize import newton
 from constants import *
 
 class thermCache: # Cache object allowing for precomputation of thermodynamic quantities
-	def __init__(self, x, y,minLogRho=-13,maxLogRho=8,minLogT=2.5,maxLogT=8,resRho=500,resT=500):
+	def __init__(self, x, y,minLogRho=-13,maxLogRho=8,minLogT=2.5,maxLogT=8,resRho=50,resT=50):
 		rran = 10**np.linspace(minLogRho,maxLogRho,num=resRho)
 		tran = 10**np.linspace(minLogT,maxLogT,num=resT)
 		data = np.zeros((len(rran),len(tran),13))
@@ -49,7 +49,7 @@ class thermCache: # Cache object allowing for precomputation of thermodynamic qu
 
 
 class rhoCache: # Cache object allowing for inversion of the equation of state
-	def __init__(self,thermcache,minLogP=-6,maxLogP=16,minLogT=2.5,maxLogT=8,resP=150,resT=150):
+	def __init__(self,thermcache,minLogP=-6,maxLogP=16,minLogT=2.5,maxLogT=8,resP=50,resT=50):
 		pran = 10**np.linspace(minLogP,maxLogP,num=resP)
 		tran = 10**np.linspace(minLogT,maxLogT,num=resT)
 		data = np.zeros((len(pran),len(tran)))
@@ -78,7 +78,7 @@ class rhoCache: # Cache object allowing for inversion of the equation of state
 		return (self.rho(p,t*(1+eps))-self.rho(p,t*(1-eps)))/(2*eps*t)
 
 class convGradCache: # Cache object for the root-finding problem of the convective gradient
-	def __init__(self,minLogV=-20,maxLogV=20,minLogA=-20,maxLogA=20,resV=100,resA=100):
+	def __init__(self,minLogV=-30,maxLogV=20,minLogA=-20,maxLogA=20,resV=50,resA=50):
 		vran = 10**np.linspace(minLogV,maxLogV,num=resV)
 		aran = 10**np.linspace(minLogA,maxLogA,num=resA)
 		data = np.zeros((len(vran),len(aran)))
